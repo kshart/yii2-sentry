@@ -6,6 +6,8 @@
 
 namespace notamedia\sentry;
 
+use Closure;
+use Throwable;
 use Sentry\ClientBuilder;
 use Sentry\Event;
 use Sentry\EventHint;
@@ -16,13 +18,9 @@ use Sentry\Integration\IntegrationInterface;
 use Sentry\SentrySdk;
 use Sentry\Severity;
 use Sentry\State\Scope;
-use Throwable;
-use Yii;
-use yii\helpers\ArrayHelper;
 use yii\log\Logger;
 use yii\log\Target;
-use yii\web\Request;
-use yii\web\User;
+use yii\helpers\ArrayHelper;
 
 /**
  * SentryTarget records log messages in a Sentry.
@@ -32,21 +30,34 @@ use yii\web\User;
 class SentryTarget extends Target
 {
     /**
-     * @var string Sentry client key.
+     * Sentry client key.
      */
-    public $dsn;
+    public string $dsn = '';
+
     /**
-     * @var array Options of the \Sentry.
+     * Options of the \Sentry.
+     * @see https://docs.sentry.io/platforms/php/configuration/options/
+     * @var string[]
      */
     public $clientOptions = [];
+
     /**
-     * @var bool Write the context information. The default implementation will dump user information, system variables, etc.
+     * Write the context information. The default implementation will dump user information, system variables, etc.
+     * @var bool
      */
-    public $context = true;
+    public bool $context = true;
+
     /**
-     * @var callable Callback function that can modify extra's array
+     * Callback function that can modify extra's array
+     * @var callable
      */
     public $extraCallback;
+
+    /**
+     * Callback returns information about the user.
+     * @see https://docs.sentry.io/platforms/php/enriching-events/identify-user/
+     */
+    public ?Closure $getUserData = null;
 
     /**
      * @inheritDoc
@@ -92,6 +103,10 @@ class SentryTarget extends Target
      */
     public function export()
     {
+        $userData = null;
+        if ($this->getUserData) {
+            $userData = $this->getUserData->call($this);
+        }
         foreach ($this->messages as $message) {
             [$text, $level, $category] = $message;
 
@@ -99,23 +114,9 @@ class SentryTarget extends Target
                 'message' => '',
                 'tags' => ['category' => $category],
                 'extra' => [],
-                'userData' => [],
             ];
 
-            $request = Yii::$app->getRequest();
-            if ($request instanceof Request && $request->getUserIP()) {
-                $data['userData']['ip_address'] = $request->getUserIP();
-            }
-
-            try {
-                /** @var User $user */
-                $user = Yii::$app->has('user', true) ? Yii::$app->get('user', false) : null;
-                if ($user && ($identity = $user->getIdentity(false))) {
-                    $data['userData']['id'] = $identity->getId();
-                }
-            } catch (Throwable $e) {}
-
-            \Sentry\withScope(function (Scope $scope) use ($text, $level, $data) {
+            \Sentry\withScope(function (Scope $scope) use ($text, $level, $data, $userData) {
                 if (is_array($text)) {
                     if (isset($text['msg'])) {
                         $data['message'] = (string)$text['msg'];
@@ -147,7 +148,7 @@ class SentryTarget extends Target
 
                 $data = $this->runExtraCallback($text, $data);
 
-                $scope->setUser($data['userData']);
+                $scope->setUser($userData);
                 foreach ($data['extra'] as $key => $value) {
                     $scope->setExtra((string) $key, $value);
                 }
