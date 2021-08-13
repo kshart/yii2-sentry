@@ -16,20 +16,46 @@ Add target class in the application config:
 ```php
 return [
     'components' => [
-	    'log' => [
-		    'traceLevel' => YII_DEBUG ? 3 : 0,
-		    'targets' => [
-			    [
-				    'class' => 'notamedia\sentry\SentryTarget',
-				    'dsn' => 'http://2682ybvhbs347:235vvgy465346@sentry.io/1',
-				    'levels' => ['error', 'warning'],
-				    // Write the context information (the default is true):
-				    'context' => true,
-				    // Additional options for `Sentry\init`:
-				    'clientOptions' => ['release' => 'my-project-name@2.3.12']
-			    ],
-		    ],
-	    ],
+        'log' => [
+            'traceLevel' => YII_DEBUG ? 3 : 0,
+            'targets' => [
+                [
+                    'class' => 'notamedia\sentry\SentryTarget',
+                    'dsn' => 'http://12345678901234567890@sentry.io/0',
+                    'levels' => ['error', 'warning'],
+                    // Write the context information (the default is true):
+                    'context' => true,
+                    /**
+                     * Additional options for `Sentry\init`
+                     * @see https://docs.sentry.io/platforms/php/configuration/options/
+                     */
+                    'clientOptions' => [
+                        'release' => 'my-project-name@2.3.12'],
+                        'prefixes' => [__DIR__],
+                    ],
+                    /**
+                     * Identify User
+                     * @see https://docs.sentry.io/platforms/php/enriching-events/identify-user/
+                     */
+                    'getUserData' => function () {
+                        $identity = Yii::$app->user->identity ?? null;
+                        if (!$identity) {
+                            return null;
+                        }
+                        return [
+                            'ip_address' => Yii::$app->request->getUserIP(),
+                            'email' => $identity->email,
+                            'username' => $identity->username,
+                            'metadata' => [
+                                'fullname' => $identity->fullname,
+                                'company' => $identity->company,
+                                'something' => $identity->something,
+                            ],
+                        ];
+                    },
+                ],
+            ],
+        ],
     ],
 ];
 ```
@@ -88,32 +114,6 @@ Example:
 ```
 
 More about tags see https://docs.sentry.io/learn/context/#tagging-events
-
-### Additional context
-
-You can add additional context (such as user information, fingerprint, etc) by calling `\Sentry\configureScope()` before logging.
-For example in main configuration on `beforeAction` event (real place will dependant on your project):
-```php
-return [
-    // ...
-    'on beforeAction' => function (\yii\base\ActionEvent $event) {
-        /** @var \yii\web\User $user */
-        $user = Yii::$app->has('user', true) ? Yii::$app->get('user', false) : null;
-        if ($user && ($identity = $user->getIdentity(false))) {
-            \Sentry\configureScope(function (\Sentry\State\Scope $scope) use ($identity) {
-                $scope->setUser([
-                    // User ID and IP will be added by logger automatically
-                    'username' => $identity->username,
-                    'email' => $identity->email,
-                ]);
-            });
-        }
-    
-        return $event->isValid;
-    },
-    // ...
-];
-```
 
 ## Log levels
 
