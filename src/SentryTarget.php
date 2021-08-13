@@ -114,9 +114,10 @@ class SentryTarget extends Target
                 'message' => '',
                 'tags' => ['category' => $category],
                 'extra' => [],
+                'user' => $userData,
             ];
 
-            \Sentry\withScope(function (Scope $scope) use ($text, $level, $data, $userData) {
+            \Sentry\withScope(function (Scope $scope) use ($text, $level, $data) {
                 if (is_array($text)) {
                     if (isset($text['msg'])) {
                         $data['message'] = (string)$text['msg'];
@@ -147,8 +148,9 @@ class SentryTarget extends Target
                 }
 
                 $data = $this->runExtraCallback($text, $data);
-
-                $scope->setUser($userData);
+                if ($data['user']) {
+                    $scope->setUser($data['user']);
+                }
                 foreach ($data['extra'] as $key => $value) {
                     $scope->setExtra((string) $key, $value);
                 }
